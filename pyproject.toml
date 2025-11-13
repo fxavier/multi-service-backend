@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "multi-service-backend"
+version = "0.1.0"
+description = "Backend FastAPI multi-tenant para marketplace de produtos e serviços"
+authors = ["Fahamo Team <dev@fahamo.local>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.111.0"
+uvicorn = {version = "^0.30.1", extras = ["standard"]}
+sqlalchemy = "^2.0.30"
+psycopg = {version = "^3.1.18", extras = ["binary"]}
+pydantic-settings = "^2.2.1"
+python-multipart = "^0.0.9"
+passlib = {version = "^1.7.4", extras = ["bcrypt"]}
+bcrypt = "<4.1"
+pyjwt = "^2.8.0"
+email-validator = "^2.2.0"
+httpx = "^0.27.0"
+alembic = "^1.13.1"
+redis = "^5.0.4"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+pytest-asyncio = "^0.23.7"
+anyio = "^4.4.0"
+ruff = "^0.4.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
