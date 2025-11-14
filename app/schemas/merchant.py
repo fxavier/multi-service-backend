@@ -22,6 +22,16 @@ class MerchantOut(BaseModel):
         from_attributes = True
 
 
+class MerchantListResponse(BaseModel):
+    """Envelope de paginação para resultados de merchants."""
+
+    items: list[MerchantOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class ProdutoOut(BaseModel):
     """Resposta resumida de produto de um merchant."""
 
