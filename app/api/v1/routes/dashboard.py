@@ -16,24 +16,23 @@ from app.core.deps import (
     get_db,
 )
 from app.infrastructure.db import models
+from app.domain.enums import PedidoStatus
+from app.schemas import dashboard as dashboard_schemas
 
 router = APIRouter()
 
 
-@router.get("/merchant/me/resumo")
-def merchant_summary(
-    db: Session = Depends(get_db),
-    tenant: TenantContext = Depends(get_current_active_tenant),
-    merchant: models.Merchant = Depends(get_current_merchant),
-):
-    """Calcula KPIs principais para o merchant autenticado."""
+PAID_PEDIDO_STATUSES: tuple[PedidoStatus, ...] = (PedidoStatus.PAGO,)
 
-    pedidos_filtrados = (
+
+def _merchant_pedidos_query(db: Session, tenant: TenantContext, merchant: models.Merchant):
+    return (
         db.query(models.Pedido)
         .join(models.ItemPedido, models.ItemPedido.pedido_id == models.Pedido.id)
         .join(
             models.Produto,
-            (models.ItemPedido.ref_id == models.Produto.id) & (models.ItemPedido.tipo == "produto"),
+            (models.ItemPedido.ref_id == models.Produto.id)
+            & (models.ItemPedido.tipo == "produto"),
         )
         .filter(
             models.Pedido.tenant_id == tenant.id,
@@ -41,15 +40,42 @@ def merchant_summary(
         )
     )
 
-    total_pedidos = pedidos_filtrados.with_entities(func.count(func.distinct(models.Pedido.id))).scalar() or 0
+
+@router.get("/merchant/me/resumo", response_model=dashboard_schemas.MerchantSummary)
+def merchant_summary(
+    db: Session = Depends(get_db),
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    merchant: models.Merchant = Depends(get_current_merchant),
+):
+    """Calcula KPIs principais para o merchant autenticado."""
+
+    status_counts_rows = (
+        _merchant_pedidos_query(db, tenant, merchant)
+        .with_entities(
+            models.Pedido.status,
+            func.count(func.distinct(models.Pedido.id)).label("total_por_status"),
+        )
+        .group_by(models.Pedido.status)
+        .all()
+    )
+    total_por_status = {status.value: int(count) for status, count in status_counts_rows}
+
+    total_pedidos = sum(
+        total_por_status.get(status.value, 0) for status in PAID_PEDIDO_STATUSES
+    )
 
     faturacao_total = (
         db.query(func.coalesce(func.sum(models.ItemPedido.preco_unitario * models.ItemPedido.quantidade), 0))
+        .join(models.Pedido, models.ItemPedido.pedido_id == models.Pedido.id)
         .join(
             models.Produto,
             (models.ItemPedido.ref_id == models.Produto.id) & (models.ItemPedido.tipo == "produto"),
         )
-        .filter(models.ItemPedido.tenant_id == tenant.id, models.Produto.merchant_id == merchant.id)
+        .filter(
+            models.ItemPedido.tenant_id == tenant.id,
+            models.Produto.merchant_id == merchant.id,
+            models.Pedido.status.in_(PAID_PEDIDO_STATUSES),
+        )
         .scalar()
         or 0
     )
@@ -64,17 +90,36 @@ def merchant_summary(
             models.ItemPedido,
             (models.ItemPedido.ref_id == models.Produto.id) & (models.ItemPedido.tipo == "produto"),
         )
+        .join(models.Pedido, models.ItemPedido.pedido_id == models.Pedido.id)
         .filter(models.Produto.merchant_id == merchant.id, models.Produto.tenant_id == tenant.id)
-        .group_by(models.Produto.id)
+        .filter(models.Pedido.status.in_(PAID_PEDIDO_STATUSES))
+        .group_by(models.Produto.id, models.Produto.nome)
         .order_by(func.sum(models.ItemPedido.quantidade).desc())
         .limit(3)
         .all()
     )
-    top_produtos = [row._asdict() for row in top_produtos_rows]
+    top_produtos = [
+        {
+            "produto_id": row.produto_id,
+            "nome": row.nome,
+            "total_vendido": int(row.total_vendido or 0),
+        }
+        for row in top_produtos_rows
+    ]
 
-    ultimos_pedidos_rows = pedidos_filtrados.order_by(models.Pedido.created_at.desc()).limit(5).all()
+    ultimos_pedidos_rows = (
+        _merchant_pedidos_query(db, tenant, merchant)
+        .order_by(models.Pedido.created_at.desc())
+        .limit(5)
+        .all()
+    )
     ultimos_pedidos = [
-        {"pedido_id": pedido.id, "total": float(pedido.total), "data": pedido.created_at}
+        {
+            "pedido_id": pedido.id,
+            "total": float(pedido.total),
+            "data": pedido.created_at,
+            "status": pedido.status.value,
+        }
         for pedido in ultimos_pedidos_rows
     ]
 
@@ -82,6 +127,7 @@ def merchant_summary(
         "merchant_id": merchant.id,
         "total_pedidos": int(total_pedidos),
         "faturacao_total": float(faturacao_total),
+        "total_pedidos_por_status": total_por_status,
         "top_produtos": top_produtos,
         "ultimos_pedidos": ultimos_pedidos,
     }
