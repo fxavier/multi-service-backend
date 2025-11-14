@@ -42,6 +42,28 @@ curl -X POST http://localhost:8000/api/v1/agendamentos \
 curl http://localhost:8000/api/v1/dashboard/merchant/me/resumo \
   -H "Authorization: Bearer {{MERCHANT_TOKEN}}" \
   -H "X-Tenant-ID: {{TENANT_UUID}}"
+
+# Resposta esperada (exemplo)
+{
+  "merchant_id": "<UUID_MERCHANT>",
+  "total_pedidos": 12,
+  "faturacao_total": 845.5,
+  "total_pedidos_por_status": {
+    "PAGO": 12,
+    "CANCELADO": 1
+  },
+  "top_produtos": [
+    {"produto_id": "<UUID_PRODUTO>", "nome": "Produto X", "total_vendido": 24}
+  ],
+  "ultimos_pedidos": [
+    {
+      "pedido_id": "<UUID_PEDIDO>",
+      "total": 42.5,
+      "data": "2024-07-01T10:00:00+00:00",
+      "status": "PAGO"
+    }
+  ]
+}
 ```
 
 > Use Swagger UI (`/docs`) para experimentar e gerar exemplos de payload dinamicamente.
