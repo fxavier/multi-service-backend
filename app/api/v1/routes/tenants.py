@@ -11,6 +11,7 @@ from app.core.deps import get_db, require_role
 from app.domain.enums import UserRole
 from app.infrastructure.db import models
 from app.schemas.tenant import TenantCreate, TenantOut, TenantUpdate
+from app.services import tenant_service
 
 router = APIRouter()
 
@@ -23,14 +24,15 @@ def create_tenant(
 ):
     """Cria um novo tenant multi-tenant."""
 
-    if db.query(models.Tenant).filter(models.Tenant.slug == payload.slug).first():
+    if tenant_service.get_tenant_by_slug(db, payload.slug):
         raise HTTPException(status_code=400, detail="Slug já existe")
 
-    tenant = models.Tenant(nome=payload.nome, slug=payload.slug, ativo=payload.ativo)
-    db.add(tenant)
-    db.commit()
-    db.refresh(tenant)
-    return tenant
+    return tenant_service.create_tenant(
+        db,
+        nome=payload.nome,
+        slug=payload.slug,
+        ativo=payload.ativo,
+    )
 
 
 @router.get("/", response_model=list[TenantOut])
@@ -40,7 +42,7 @@ def list_tenants(
 ):
     """Lista todos os tenants existentes."""
 
-    return db.query(models.Tenant).all()
+    return list(tenant_service.list_tenants(db))
 
 
 @router.get("/{tenant_id}", response_model=TenantOut)
@@ -51,7 +53,7 @@ def get_tenant(
 ):
     """Obtém detalhes de um tenant específico."""
 
-    tenant = db.get(models.Tenant, tenant_id)
+    tenant = tenant_service.get_tenant_by_id(db, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant não encontrado")
     return tenant
@@ -66,16 +68,8 @@ def update_tenant(
 ):
     """Atualiza parcialmente um tenant (nome ou estado)."""
 
-    tenant = db.get(models.Tenant, tenant_id)
+    tenant = tenant_service.get_tenant_by_id(db, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant não encontrado")
 
-    if payload.nome is not None:
-        tenant.nome = payload.nome
-    if payload.ativo is not None:
-        tenant.ativo = payload.ativo
-
-    db.add(tenant)
-    db.commit()
-    db.refresh(tenant)
-    return tenant
+    return tenant_service.update_tenant(db, tenant, nome=payload.nome, ativo=payload.ativo)

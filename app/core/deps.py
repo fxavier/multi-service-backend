@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.domain.enums import UserRole
 from app.infrastructure.db import models
+from app.services import tenant_service
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -42,12 +43,7 @@ def get_tenant(request: Request, db: Session = Depends(get_db)) -> TenantContext
     if not tenant_identifier:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant não informado")
 
-    tenant = None
-    try:
-        tenant_uuid = UUID(tenant_identifier)
-        tenant = db.query(models.Tenant).filter(models.Tenant.id == tenant_uuid).first()
-    except ValueError:
-        tenant = db.query(models.Tenant).filter(models.Tenant.slug == tenant_identifier).first()
+    tenant = tenant_service.get_tenant_by_identifier(db, tenant_identifier)
 
     if not tenant or not tenant.ativo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant inválido/inativo")
