@@ -21,6 +21,11 @@ def register_user(payload: auth_schemas.UserRegister, db: Session = Depends(get_
     tenant = db.query(models.Tenant).filter(models.Tenant.slug == payload.tenant_slug).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant inválido")
+    if not tenant.ativo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant inativo: não é possível registar utilizadores",
+        )
 
     existing = db.query(models.User).filter(models.User.email == payload.email).first()
     if existing:
