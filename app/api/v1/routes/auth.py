@@ -9,6 +9,7 @@ from app.core.deps import get_db, get_current_user
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.domain.enums import UserRole
 from app.infrastructure.db import models
+from app.services import tenant_service
 from app.schemas import auth as auth_schemas
 
 router = APIRouter()
@@ -18,7 +19,7 @@ router = APIRouter()
 def register_user(payload: auth_schemas.UserRegister, db: Session = Depends(get_db)):
     """Regista um novo cliente associado a um tenant existente."""
 
-    tenant = db.query(models.Tenant).filter(models.Tenant.slug == payload.tenant_slug).first()
+    tenant = tenant_service.get_tenant_by_slug(db, payload.tenant_slug)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant inválido")
     if not tenant.ativo:
