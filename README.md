@@ -1,4 +1,4 @@
-# Fahamo Multi Service Backend
+# Multi Service Backend
 
 Backend FastAPI multi-tenant que suporta o marketplace Next.js (produtos + serviços) com Postgres, SQLAlchemy 2 e JWT.
 
