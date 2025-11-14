@@ -15,13 +15,13 @@ from app.schemas import merchant as merchant_schemas
 router = APIRouter()
 
 
-@router.get("/", response_model=list[merchant_schemas.MerchantOut])
+@router.get("/", response_model=merchant_schemas.MerchantListResponse)
 def list_merchants(
     destaque: bool | None = None,
     tipo: str | None = None,
     search: str | None = Query(default=None, min_length=2),
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     tenant: TenantContext = Depends(get_tenant),
     db: Session = Depends(get_db),
 ):
@@ -37,9 +37,18 @@ def list_merchants(
         ilike = f"%{search.lower()}%"
         query = query.filter(func.lower(models.Merchant.nome).like(ilike))
 
+    total = query.count()
     offset = (page - 1) * page_size
     merchants = query.offset(offset).limit(page_size).all()
-    return merchants
+    total_pages = (total + page_size - 1) // page_size if total else 0
+
+    return merchant_schemas.MerchantListResponse(
+        items=merchants,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/{merchant_identifier}", response_model=merchant_schemas.MerchantOut)

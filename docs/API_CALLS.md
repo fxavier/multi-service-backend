@@ -20,8 +20,26 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -d '{"email":"cliente@acme.com","password":"Teste123"}'
 
 # 4. Listar merchants do tenant (via slug ou UUID)
-curl http://localhost:8000/api/v1/merchants?destaque=true \
+curl "http://localhost:8000/api/v1/merchants?destaque=true&page=1&page_size=20" \
   -H "X-Tenant-ID: lisboa"
+
+# Resposta (paginação com metadata)
+{
+  "items": [
+    {
+      "id": "<UUID_MERCHANT>",
+      "nome": "Loja",
+      "slug": "loja",
+      "tipo": "produtos",
+      "avaliacao": 4.5,
+      "destaque": true
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1
+}
 
 # 5. Checkout
 token=$(...) # token cliente
