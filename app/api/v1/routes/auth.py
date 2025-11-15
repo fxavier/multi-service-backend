@@ -15,6 +15,14 @@ from app.schemas import auth as auth_schemas
 router = APIRouter()
 
 
+def _ensure_role_exists(db: Session, role_name: str):
+    role = db.query(models.Role).filter(models.Role.name == role_name).first()
+    if not role:
+        role = models.Role(name=role_name, description=f"Role {role_name}", permissions={})
+        db.add(role)
+        db.commit()
+
+
 @router.post("/register", response_model=auth_schemas.UserRead, status_code=status.HTTP_201_CREATED)
 def register_user(payload: auth_schemas.UserRegister, db: Session = Depends(get_db)):
     """Regista um novo cliente associado a um tenant existente."""
@@ -31,6 +39,8 @@ def register_user(payload: auth_schemas.UserRegister, db: Session = Depends(get_
     existing = db.query(models.User).filter(models.User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email já utilizado")
+
+    _ensure_role_exists(db, UserRole.CLIENTE.value)
 
     user = models.User(
         email=payload.email,
