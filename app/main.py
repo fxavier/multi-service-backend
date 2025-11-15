@@ -6,6 +6,7 @@ from app.api.v1.routes import (
     auth,
     catalog,
     checkout,
+    clientes,
     dashboard,
     merchants,
     prestadores,
@@ -35,6 +36,7 @@ app.include_router(checkout.router, prefix="/api/v1/checkout", tags=["Checkout"]
 app.include_router(agendamentos.router, prefix="/api/v1/agendamentos", tags=["Agendamentos"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(catalog.router, prefix="/api/v1", tags=["Catálogo"])
+app.include_router(clientes.router, prefix="/api/v1", tags=["Clientes"])
 app.include_router(prestadores.router, prefix="/api/v1", tags=["Prestadores"])
 
 

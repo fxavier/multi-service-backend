@@ -20,7 +20,6 @@ from app.core.deps import (
 from app.infrastructure.db import models
 from app.schemas.merchant import (
     PrestadorListResponse,
-    PrestadorServicoOut,
     ServicoCreate,
     ServicoListResponse,
     ServicoOut,

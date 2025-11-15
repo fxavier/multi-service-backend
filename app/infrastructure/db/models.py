@@ -217,12 +217,41 @@ class Cliente(Base, TimestampMixin, TenantScopedMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     telefone: Mapped[str] = mapped_column(String(50), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
-    default_address_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID(), nullable=True)
+    default_address_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("clientes_enderecos.id", ondelete="SET NULL"), nullable=True
+    )
     metadata_extra: Mapped[dict] = mapped_column(JSON, default=dict)
 
     user: Mapped[User] = relationship(back_populates="cliente")
     pedidos: Mapped[List["Pedido"]] = relationship(back_populates="cliente")
     agendamentos: Mapped[List["Agendamento"]] = relationship(back_populates="cliente")
+    enderecos: Mapped[List["ClienteEndereco"]] = relationship(
+        back_populates="cliente", cascade="all, delete-orphan"
+    )
+    default_address: Mapped[Optional["ClienteEndereco"]] = relationship(
+        "ClienteEndereco", foreign_keys=[default_address_id], post_update=True
+    )
+
+
+class ClienteEndereco(Base, TimestampMixin, TenantScopedMixin):
+    """Endereços de cliente para entregas/atendimentos."""
+
+    __tablename__ = "clientes_enderecos"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    cliente_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clientes.id", ondelete="CASCADE"))
+    apelido: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    linha1: Mapped[str] = mapped_column(String(255))
+    linha2: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cidade: Mapped[str] = mapped_column(String(120))
+    codigo_postal: Mapped[str] = mapped_column(String(60))
+    pais: Mapped[str] = mapped_column(String(120))
+    telefone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    latitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    cliente: Mapped[Cliente] = relationship(back_populates="enderecos")
 
 
 class CartItem(Base, TimestampMixin, TenantScopedMixin):
