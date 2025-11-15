@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_cliente, get_db
+from app.core.deps import get_current_active_tenant, get_current_cliente, get_db
+from app.domain.enums import AgendamentoStatus
 from app.infrastructure.db import models
 from app.schemas.cliente import (
     ClienteEnderecoCreate,
@@ -16,6 +18,7 @@ from app.schemas.cliente import (
     ClienteOut,
     ClienteUpdate,
 )
+from app.schemas.agendamento import AgendamentoCancelCliente, AgendamentoOut
 
 router = APIRouter()
 
@@ -55,6 +58,23 @@ def _get_endereco(
     if not endereco:
         raise HTTPException(status_code=404, detail="Endereço não encontrado")
     return endereco
+
+
+def _get_agendamento_cliente(
+    *, cliente: models.Cliente, agendamento_id: UUID, db: Session
+) -> models.Agendamento:
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.id == agendamento_id,
+            models.Agendamento.cliente_id == cliente.id,
+            models.Agendamento.tenant_id == cliente.tenant_id,
+        )
+        .first()
+    )
+    if not agendamento:
+        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
+    return agendamento
 
 
 @router.get("/me/enderecos", response_model=list[ClienteEnderecoOut])
@@ -135,3 +155,49 @@ def delete_endereco(
     db.delete(endereco)
     db.commit()
     return None
+
+
+@router.get("/me/agendamentos", response_model=list[AgendamentoOut])
+def list_agendamentos_cliente(
+    status_filter: AgendamentoStatus | None = Query(default=None, alias="status"),
+    inicio: datetime | None = None,
+    fim: datetime | None = None,
+    cliente: models.Cliente = Depends(get_current_cliente),
+    tenant=Depends(get_current_active_tenant),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.tenant_id == tenant.id,
+            models.Agendamento.cliente_id == cliente.id,
+        )
+        .order_by(models.Agendamento.data_hora.desc())
+    )
+    if status_filter:
+        query = query.filter(models.Agendamento.status == status_filter)
+    if inicio:
+        query = query.filter(models.Agendamento.data_hora >= inicio)
+    if fim:
+        query = query.filter(models.Agendamento.data_hora <= fim)
+    return query.all()
+
+
+@router.patch("/me/agendamentos/{agendamento_id}/cancelar", response_model=AgendamentoOut)
+def cancelar_agendamento_cliente(
+    agendamento_id: UUID,
+    payload: AgendamentoCancelCliente,
+    cliente: models.Cliente = Depends(get_current_cliente),
+    tenant=Depends(get_current_active_tenant),
+    db: Session = Depends(get_db),
+):
+    agendamento = _get_agendamento_cliente(cliente=cliente, agendamento_id=agendamento_id, db=db)
+    if agendamento.status == AgendamentoStatus.CANCELADO:
+        return agendamento
+    agendamento.status = AgendamentoStatus.CANCELADO
+    agendamento.data_cancelamento = datetime.now(timezone.utc)
+    agendamento.motivo_cancelamento = payload.motivo_cancelamento
+    db.add(agendamento)
+    db.commit()
+    db.refresh(agendamento)
+    return agendamento
