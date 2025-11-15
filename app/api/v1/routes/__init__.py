@@ -1,4 +1,14 @@
-from . import auth, merchants, checkout, agendamentos, tenants, dashboard, catalog, prestadores
+from . import (
+    agendamentos,
+    auth,
+    catalog,
+    checkout,
+    clientes,
+    dashboard,
+    merchants,
+    prestadores,
+    tenants,
+)
 
 __all__ = [
     "auth",
@@ -8,5 +18,6 @@ __all__ = [
     "tenants",
     "dashboard",
     "catalog",
+    "clientes",
     "prestadores",
 ]
