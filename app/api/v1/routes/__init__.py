@@ -8,6 +8,7 @@ from . import (
     dashboard,
     merchants,
     prestadores,
+    roles,
     tenants,
 )
 
@@ -22,4 +23,5 @@ __all__ = [
     "cart",
     "clientes",
     "prestadores",
+    "roles",
 ]

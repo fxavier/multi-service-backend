@@ -53,6 +53,17 @@ class TenantScopedMixin:
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="RESTRICT"), index=True)
 
 
+class Role(Base, TimestampMixin):
+    """Representa um role configurável para autorização."""
+
+    __tablename__ = "roles"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    permissions: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class User(Base, TimestampMixin, TenantScopedMixin):
     """Utilizador autenticado, associado a perfis funcionais."""
 

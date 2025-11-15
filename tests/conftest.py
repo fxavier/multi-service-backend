@@ -13,6 +13,8 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from app.core.config import settings
+from app.core.security import create_access_token
 from app.infrastructure.db.base_class import Base
 from app.infrastructure.db import models
 from app.domain.enums import UserRole
@@ -86,6 +88,16 @@ def db_session() -> Session:
         session.add(servico)
         session.flush()
 
+        merchant_owner_user = models.User(
+            email="merchant.owner@example.com",
+            password_hash="hash",
+            role=UserRole.MERCHANT,
+            tenant_id=tenant.id,
+            is_active=True,
+        )
+        session.add(merchant_owner_user)
+        session.flush()
+
         merchant = models.Merchant(
             nome="Loja",
             slug="loja",
@@ -93,6 +105,7 @@ def db_session() -> Session:
             avaliacao=4.5,
             destaque=True,
             tenant_id=tenant.id,
+            owner_id=merchant_owner_user.id,
         )
         session.add(merchant)
         session.flush()
@@ -127,3 +140,18 @@ def client(db_session: Session) -> TestClient:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture()
+def auth_headers():
+    """Gera headers de autenticação + tenant para o utilizador indicado."""
+
+    def _builder(user: models.User, *, tenant_override: str | None = None) -> dict[str, str]:
+        token = create_access_token(str(user.id), tenant_id=str(user.tenant_id), role=user.role.value)
+        tenant_header_value = tenant_override or str(user.tenant_id)
+        return {
+            "Authorization": f"Bearer {token}",
+            settings.tenant_header: tenant_header_value,
+        }
+
+    return _builder

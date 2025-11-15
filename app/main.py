@@ -11,6 +11,7 @@ from app.api.v1.routes import (
     dashboard,
     merchants,
     prestadores,
+    roles,
     tenants,
 )
 
@@ -40,6 +41,7 @@ app.include_router(catalog.router, prefix="/api/v1", tags=["Catálogo"])
 app.include_router(cart.router, prefix="/api/v1", tags=["Carrinho"])
 app.include_router(clientes.router, prefix="/api/v1", tags=["Clientes"])
 app.include_router(prestadores.router, prefix="/api/v1", tags=["Prestadores"])
+app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 
 
 @app.get("/", tags=["Root"])
