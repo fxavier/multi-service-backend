@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.enums import AgendamentoStatus
+from app.domain.enums import AgendamentoStatus, PedidoOrigem
 
 
 class AgendamentoCreate(BaseModel):
@@ -19,17 +19,38 @@ class AgendamentoCreate(BaseModel):
     nome: str
     contacto: str
     observacoes: str | None = None
+    canal: PedidoOrigem | None = PedidoOrigem.WEB
+    endereco_atendimento: dict | None = None
 
 
 class AgendamentoOut(BaseModel):
     """Resposta padrão de agendamento."""
 
     id: UUID
+    cliente_id: UUID
     prestador_id: UUID
     servico_id: UUID
     data_hora: datetime
     status: AgendamentoStatus
     metadados_formulario: dict
+    preco_confirmado: float | None = None
+    endereco_atendimento: dict | None = None
+    canal: PedidoOrigem | None = None
+    data_confirmacao: datetime | None = None
+    data_cancelamento: datetime | None = None
+    motivo_cancelamento: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgendamentoStatusUpdate(BaseModel):
+    status: AgendamentoStatus
+    preco_confirmado: float | None = None
+    endereco_atendimento: dict | None = None
+    data_confirmacao: datetime | None = None
+    data_cancelamento: datetime | None = None
+    motivo_cancelamento: str | None = None
+
+
+class AgendamentoCancelCliente(BaseModel):
+    motivo_cancelamento: str | None = None

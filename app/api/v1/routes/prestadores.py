@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
 from uuid import UUID
@@ -25,6 +26,8 @@ from app.schemas.merchant import (
     ServicoOut,
     ServicoUpdate,
 )
+from app.schemas.agendamento import AgendamentoOut, AgendamentoStatusUpdate
+from app.domain.enums import AgendamentoStatus
 
 router = APIRouter()
 
@@ -80,6 +83,27 @@ def _get_servico(
     if not servico:
         raise HTTPException(status_code=404, detail="Serviço não encontrado")
     return servico
+
+
+def _get_agendamento_prestador(
+    *,
+    db: Session,
+    tenant: TenantContext,
+    prestador: models.PrestadorServico,
+    agendamento_id: UUID,
+) -> models.Agendamento:
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.tenant_id == tenant.id,
+            models.Agendamento.prestador_id == prestador.id,
+            models.Agendamento.id == agendamento_id,
+        )
+        .first()
+    )
+    if not agendamento:
+        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
+    return agendamento
 
 
 @router.post("/prestadores/{prestador_id}/servicos", response_model=ServicoOut, status_code=status.HTTP_201_CREATED)
@@ -218,6 +242,73 @@ def delete_servico(
     db.add(servico)
     db.commit()
     return None
+
+
+# Agendamentos (prestador)
+
+
+@router.get("/prestadores/me/agendamentos", response_model=list[AgendamentoOut])
+def listar_agendamentos_prestador(
+    status_filter: AgendamentoStatus | None = Query(default=None, alias="status"),
+    inicio: datetime | None = None,
+    fim: datetime | None = None,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    prestador: models.PrestadorServico = Depends(get_current_prestador),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.tenant_id == tenant.id,
+            models.Agendamento.prestador_id == prestador.id,
+        )
+        .order_by(models.Agendamento.data_hora.desc())
+    )
+    if status_filter:
+        query = query.filter(models.Agendamento.status == status_filter)
+    if inicio:
+        query = query.filter(models.Agendamento.data_hora >= inicio)
+    if fim:
+        query = query.filter(models.Agendamento.data_hora <= fim)
+    return query.all()
+
+
+@router.get("/prestadores/me/agendamentos/{agendamento_id}", response_model=AgendamentoOut)
+def obter_agendamento_prestador(
+    agendamento_id: UUID,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    prestador: models.PrestadorServico = Depends(get_current_prestador),
+    db: Session = Depends(get_db),
+):
+    agendamento = _get_agendamento_prestador(
+        db=db, tenant=tenant, prestador=prestador, agendamento_id=agendamento_id
+    )
+    return agendamento
+
+
+@router.patch("/prestadores/me/agendamentos/{agendamento_id}", response_model=AgendamentoOut)
+def atualizar_agendamento_prestador(
+    agendamento_id: UUID,
+    payload: AgendamentoStatusUpdate,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    prestador: models.PrestadorServico = Depends(get_current_prestador),
+    db: Session = Depends(get_db),
+):
+    agendamento = _get_agendamento_prestador(
+        db=db, tenant=tenant, prestador=prestador, agendamento_id=agendamento_id
+    )
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(agendamento, key, value)
+    if payload.status == AgendamentoStatus.CONFIRMADO and not agendamento.data_confirmacao:
+        agendamento.data_confirmacao = payload.data_confirmacao or datetime.now(timezone.utc)
+    if payload.status == AgendamentoStatus.CANCELADO:
+        agendamento.data_cancelamento = payload.data_cancelamento or datetime.now(timezone.utc)
+        agendamento.motivo_cancelamento = payload.motivo_cancelamento
+    db.add(agendamento)
+    db.commit()
+    db.refresh(agendamento)
+    return agendamento
 
 
 @router.get("/public/prestadores", response_model=PrestadorListResponse)

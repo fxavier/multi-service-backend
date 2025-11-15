@@ -45,6 +45,9 @@ def criar_agendamento(
             "contacto": payload.contacto,
             "observacoes": payload.observacoes,
         },
+        preco_confirmado=float(servico.preco),
+        canal=payload.canal,
+        endereco_atendimento=payload.endereco_atendimento or {},
     )
     db.add(agendamento)
     db.commit()
