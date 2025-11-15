@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -27,8 +28,8 @@ from app.schemas.merchant import (
     ProdutoOut,
     ProdutoUpdate,
 )
-from app.domain.enums import UserRole
-from fastapi import status
+from app.schemas.pedido import PedidoDetalhe, PedidoResumo, PedidoStatusUpdate
+from app.domain.enums import PedidoStatus, UserRole
 
 router = APIRouter()
 
@@ -175,6 +176,38 @@ def _get_produto(
     if not produto:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     return produto
+
+
+def _get_owner_merchant(
+    *, tenant: TenantContext, user: models.User, db: Session
+) -> models.Merchant:
+    if user.role != UserRole.MERCHANT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas merchants têm acesso")
+    merchant = (
+        db.query(models.Merchant)
+        .filter(models.Merchant.tenant_id == tenant.id, models.Merchant.owner_id == user.id)
+        .first()
+    )
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant não encontrado para este utilizador")
+    return merchant
+
+
+def _pedido_para_schema(pedido: models.Pedido, merchant_id: UUID) -> PedidoResumo:
+    itens = [item for item in pedido.itens if item.merchant_id == merchant_id]
+    return PedidoResumo(
+        id=pedido.id,
+        subtotal=pedido.subtotal,
+        total=pedido.total,
+        status=pedido.status,
+        estado_pagamento=pedido.estado_pagamento,
+        origem=pedido.origem.value if hasattr(pedido.origem, "value") else pedido.origem,
+        created_at=pedido.created_at,
+        cliente_nome_snapshot=pedido.cliente_nome_snapshot,
+        cliente_email_snapshot=pedido.cliente_email_snapshot,
+        cliente_telefone_snapshot=pedido.cliente_telefone_snapshot,
+        itens=itens,
+    )
 
 
 @router.post(
@@ -325,6 +358,119 @@ def delete_produto(
     db.add(produto)
     db.commit()
     return None
+
+
+# Pedidos para merchants proprietários
+
+MERCHANT_STATUS_ALLOWED = {
+    PedidoStatus.ACEITE,
+    PedidoStatus.EM_PREPARACAO,
+    PedidoStatus.ENVIADO,
+    PedidoStatus.CONCLUIDO,
+    PedidoStatus.CANCELADO,
+}
+
+
+def _get_pedido_para_merchant(
+    *,
+    db: Session,
+    tenant: TenantContext,
+    merchant: models.Merchant,
+    pedido_id: UUID,
+):
+    pedido = (
+        db.query(models.Pedido)
+        .filter(models.Pedido.tenant_id == tenant.id, models.Pedido.id == pedido_id)
+        .first()
+    )
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    itens = [item for item in pedido.itens if item.merchant_id == merchant.id]
+    if not itens:
+        raise HTTPException(status_code=404, detail="Pedido não contém itens deste merchant")
+    return pedido, itens
+
+
+@router.get("/me/pedidos", response_model=list[PedidoResumo])
+def listar_pedidos_merchant(
+    status_filter: PedidoStatus | None = Query(default=None, alias="status"),
+    estado_pagamento: str | None = None,
+    created_inicio: datetime | None = None,
+    created_fim: datetime | None = None,
+    confirmacao_inicio: datetime | None = None,
+    confirmacao_fim: datetime | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    merchant = _get_owner_merchant(tenant=tenant, user=user, db=db)
+    query = (
+        db.query(models.Pedido)
+        .join(models.ItemPedido)
+        .filter(
+            models.Pedido.tenant_id == tenant.id,
+            models.ItemPedido.merchant_id == merchant.id,
+        )
+    )
+    if status_filter:
+        query = query.filter(models.Pedido.status == status_filter)
+    if estado_pagamento:
+        query = query.filter(models.Pedido.estado_pagamento == estado_pagamento)
+    if created_inicio:
+        query = query.filter(models.Pedido.created_at >= created_inicio)
+    if created_fim:
+        query = query.filter(models.Pedido.created_at <= created_fim)
+    if confirmacao_inicio:
+        query = query.filter(models.Pedido.data_confirmacao >= confirmacao_inicio)
+    if confirmacao_fim:
+        query = query.filter(models.Pedido.data_confirmacao <= confirmacao_fim)
+
+    query = query.distinct(models.Pedido.id).order_by(models.Pedido.created_at.desc())
+    offset = (page - 1) * page_size
+    pedidos = query.offset(offset).limit(page_size).all()
+
+    return [_pedido_para_schema(pedido, merchant.id) for pedido in pedidos]
+
+
+@router.get("/me/pedidos/{pedido_id}", response_model=PedidoDetalhe)
+def obter_pedido_merchant(
+    pedido_id: UUID,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    merchant = _get_owner_merchant(tenant=tenant, user=user, db=db)
+    pedido, _ = _get_pedido_para_merchant(db=db, tenant=tenant, merchant=merchant, pedido_id=pedido_id)
+    resumo = _pedido_para_schema(pedido, merchant.id)
+    return PedidoDetalhe(
+        **resumo.model_dump(),
+        endereco_entrega_snapshot=pedido.endereco_entrega_snapshot,
+    )
+
+
+@router.patch("/me/pedidos/{pedido_id}/status", response_model=PedidoDetalhe)
+def atualizar_status_pedido(
+    pedido_id: UUID,
+    payload: PedidoStatusUpdate,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if payload.status not in MERCHANT_STATUS_ALLOWED:
+        raise HTTPException(status_code=400, detail="Status não permitido para o merchant")
+    merchant = _get_owner_merchant(tenant=tenant, user=user, db=db)
+    pedido, _ = _get_pedido_para_merchant(db=db, tenant=tenant, merchant=merchant, pedido_id=pedido_id)
+    pedido.status = payload.status
+    db.add(pedido)
+    db.commit()
+    db.refresh(pedido)
+    resumo = _pedido_para_schema(pedido, merchant.id)
+    return PedidoDetalhe(
+        **resumo.model_dump(),
+        endereco_entrega_snapshot=pedido.endereco_entrega_snapshot,
+    )
 
 
 @router.get("/{merchant_id}/categorias", response_model=CategoriaListResponse)

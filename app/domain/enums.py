@@ -13,6 +13,10 @@ class PedidoStatus(str, Enum):
     PENDENTE_PAGAMENTO = "PENDENTE_PAGAMENTO"
     PAGO = "PAGO"
     CANCELADO = "CANCELADO"
+    ACEITE = "ACEITE"
+    EM_PREPARACAO = "EM_PREPARACAO"
+    ENVIADO = "ENVIADO"
+    CONCLUIDO = "CONCLUIDO"
 
 
 class AgendamentoStatus(str, Enum):
