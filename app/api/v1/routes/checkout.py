@@ -14,12 +14,21 @@ router = APIRouter()
 
 @router.post("/", response_model=PedidoOut)
 def checkout(
-    payload: CheckoutRequest,
+    payload: CheckoutRequest | None = None,
     db: Session = Depends(get_db),
     tenant: TenantContext = Depends(get_current_active_tenant),
     cliente=Depends(get_current_cliente),
 ):
     """Cria um pedido validando preços no servidor e limpa o carrinho."""
 
-    pedido = create_pedido(db=db, tenant_id=tenant.id, cliente=cliente, itens=payload.itens)
+    pedido = create_pedido(
+        db=db,
+        tenant_id=tenant.id,
+        cliente=cliente,
+        itens_payload=payload.itens if payload else None,
+        origem=payload.origem if payload else None,
+        metodo_pagamento=payload.metodo_pagamento if payload else None,
+        estado_pagamento=payload.estado_pagamento if payload else None,
+        endereco_id=payload.endereco_id if payload else None,
+    )
     return pedido

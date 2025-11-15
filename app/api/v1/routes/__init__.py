@@ -1,6 +1,7 @@
 from . import (
     agendamentos,
     auth,
+    cart,
     catalog,
     checkout,
     clientes,
@@ -18,6 +19,7 @@ __all__ = [
     "tenants",
     "dashboard",
     "catalog",
+    "cart",
     "clientes",
     "prestadores",
 ]
