@@ -5,7 +5,7 @@ from __future__ import annotations
 from math import ceil
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import TenantContext, get_db, get_tenant
@@ -70,6 +70,54 @@ def listar_produtos(
         query = query.filter(models.Produto.disponivel == disponivel)
     if ativo is not None:
         query = query.filter(models.Produto.ativo == ativo)
+    if search:
+        ilike = f"%{search.lower()}%"
+        query = query.filter(models.Produto.nome.ilike(ilike))
+
+    total, total_pages, produtos = _paginate(query, page, page_size)
+    return ProdutoListResponse(
+        total=total,
+        items=produtos,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.get(
+    "/public/merchants/{merchant_slug}/produtos",
+    response_model=ProdutoListResponse,
+    tags=["Catálogo"],
+)
+def listar_produtos_publicos_por_slug(
+    merchant_slug: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    categoria_id: UUID | None = None,
+    search: str | None = Query(default=None, min_length=2),
+    tenant: TenantContext = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    merchant = (
+        db.query(models.Merchant)
+        .filter(models.Merchant.tenant_id == tenant.id, models.Merchant.slug == merchant_slug)
+        .first()
+    )
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant não encontrado")
+
+    query = (
+        db.query(models.Produto)
+        .filter(
+            models.Produto.tenant_id == tenant.id,
+            models.Produto.merchant_id == merchant.id,
+            models.Produto.ativo.is_(True),
+            models.Produto.disponivel.is_(True),
+        )
+        .order_by(models.Produto.nome)
+    )
+    if categoria_id:
+        query = query.filter(models.Produto.categoria_id == categoria_id)
     if search:
         ilike = f"%{search.lower()}%"
         query = query.filter(models.Produto.nome.ilike(ilike))
