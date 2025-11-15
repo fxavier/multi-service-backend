@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import PedidoOrigem
+
 
 class CheckoutItem(BaseModel):
     """Item enviado no payload de checkout."""
@@ -20,7 +22,11 @@ class CheckoutItem(BaseModel):
 class CheckoutRequest(BaseModel):
     """Payload completo do checkout."""
 
-    itens: List[CheckoutItem]
+    itens: List[CheckoutItem] | None = None
+    origem: PedidoOrigem | None = None
+    metodo_pagamento: str | None = None
+    estado_pagamento: str | None = None
+    endereco_id: UUID | None = None
 
 
 class PedidoItemOut(BaseModel):
