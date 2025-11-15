@@ -8,10 +8,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.deps import TenantContext, get_current_active_tenant, get_current_user, get_db, get_tenant
+from app.core.deps import (
+    TenantContext,
+    get_current_active_tenant,
+    get_current_user,
+    get_db,
+    get_tenant,
+)
 from app.infrastructure.db import models
 from app.schemas import merchant as merchant_schemas
-from app.schemas.merchant import CategoriaCreate, CategoriaListResponse, CategoriaOut, CategoriaUpdate
+from app.schemas.merchant import (
+    CategoriaCreate,
+    CategoriaListResponse,
+    CategoriaOut,
+    CategoriaUpdate,
+    ProdutoCreate,
+    ProdutoListResponse,
+    ProdutoOut,
+    ProdutoUpdate,
+)
 from app.domain.enums import UserRole
 from fastapi import status
 
@@ -75,18 +90,51 @@ def get_merchant(
     return merchant
 
 
-@router.get("/{merchant_id}/produtos", response_model=list[merchant_schemas.ProdutoOut])
-def list_produtos(
-    merchant_id: UUID, tenant: TenantContext = Depends(get_tenant), db: Session = Depends(get_db)
+@router.get("/{merchant_id}/produtos", response_model=ProdutoListResponse)
+def list_produtos_privado(
+    merchant_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    categoria_id: UUID | None = None,
+    nome: str | None = Query(default=None, min_length=2),
+    ativo: bool | None = None,
+    disponivel: bool | None = None,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Lista produtos de um merchant específico do tenant atual."""
+    """Lista privada de produtos para gestão do merchant."""
 
-    produtos = (
+    _get_merchant_for_user(merchant_id=merchant_id, tenant=tenant, db=db, user=user)
+    query = (
         db.query(models.Produto)
-        .filter(models.Produto.tenant_id == tenant.id, models.Produto.merchant_id == merchant_id)
-        .all()
+        .filter(
+            models.Produto.tenant_id == tenant.id,
+            models.Produto.merchant_id == merchant_id,
+        )
+        .order_by(models.Produto.nome)
     )
-    return produtos
+    if categoria_id:
+        query = query.filter(models.Produto.categoria_id == categoria_id)
+    if nome:
+        ilike = f"%{nome.lower()}%"
+        query = query.filter(models.Produto.nome.ilike(ilike))
+    if ativo is not None:
+        query = query.filter(models.Produto.ativo == ativo)
+    if disponivel is not None:
+        query = query.filter(models.Produto.disponivel == disponivel)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    produtos = query.offset(offset).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if page_size else 1
+    return ProdutoListResponse(
+        total=total,
+        items=produtos,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 # Categorias CRUD para merchants autenticados
@@ -105,6 +153,28 @@ def _get_merchant_for_user(
     if user.role == UserRole.MERCHANT and merchant.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este merchant")
     return merchant
+
+
+def _produto_base_query(db: Session, tenant_id: UUID, merchant_id: UUID):
+    return db.query(models.Produto).filter(
+        models.Produto.tenant_id == tenant_id,
+        models.Produto.merchant_id == merchant_id,
+    )
+
+
+def _get_produto(
+    *,
+    db: Session,
+    tenant: TenantContext,
+    merchant_id: UUID,
+    produto_id: UUID,
+    user: models.User,
+) -> models.Produto:
+    _get_merchant_for_user(merchant_id=merchant_id, tenant=tenant, db=db, user=user)
+    produto = _produto_base_query(db, tenant.id, merchant_id).filter(models.Produto.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    return produto
 
 
 @router.post(
@@ -133,6 +203,128 @@ def create_categoria(
     db.commit()
     db.refresh(categoria)
     return categoria
+
+
+@router.post(
+    "/{merchant_id}/produtos",
+    response_model=ProdutoOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_produto(
+    merchant_id: UUID,
+    payload: ProdutoCreate,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_merchant_for_user(merchant_id=merchant_id, tenant=tenant, db=db, user=user)
+    if payload.merchant_id != merchant_id:
+        raise HTTPException(status_code=400, detail="merchant_id do payload não corresponde ao path")
+    produto = models.Produto(
+        tenant_id=tenant.id,
+        merchant_id=merchant_id,
+        nome=payload.nome,
+        preco=payload.preco,
+        categoria_id=payload.categoria_id,
+        descricao_curta=payload.descricao_curta,
+        descricao_detalhada=payload.descricao_detalhada,
+        sku=payload.sku,
+        stock_atual=payload.stock_atual,
+        stock_minimo=payload.stock_minimo,
+        imagens=payload.imagens or [],
+        atributos_extras=payload.atributos_extras or {},
+        permitir_backorder=payload.permitir_backorder,
+        max_por_pedido=payload.max_por_pedido,
+        disponivel=payload.disponivel,
+        ativo=payload.ativo,
+    )
+    db.add(produto)
+    db.commit()
+    db.refresh(produto)
+    return produto
+
+
+@router.get("/{merchant_id}/produtos", response_model=ProdutoListResponse)
+def list_produtos_privado(
+    merchant_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    categoria_id: UUID | None = None,
+    nome: str | None = Query(default=None, min_length=2),
+    ativo: bool | None = None,
+    disponivel: bool | None = None,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_merchant_for_user(merchant_id=merchant_id, tenant=tenant, db=db, user=user)
+    query = _produto_base_query(db, tenant.id, merchant_id).order_by(models.Produto.nome)
+    if categoria_id:
+        query = query.filter(models.Produto.categoria_id == categoria_id)
+    if nome:
+        ilike = f"%{nome.lower()}%"
+        query = query.filter(models.Produto.nome.ilike(ilike))
+    if ativo is not None:
+        query = query.filter(models.Produto.ativo == ativo)
+    if disponivel is not None:
+        query = query.filter(models.Produto.disponivel == disponivel)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    produtos = query.offset(offset).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if page_size else 1
+    return ProdutoListResponse(
+        total=total,
+        items=produtos,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.get("/{merchant_id}/produtos/{produto_id}", response_model=ProdutoOut)
+def get_produto_privado(
+    merchant_id: UUID,
+    produto_id: UUID,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _get_produto(db=db, tenant=tenant, merchant_id=merchant_id, produto_id=produto_id, user=user)
+
+
+@router.patch("/{merchant_id}/produtos/{produto_id}", response_model=ProdutoOut)
+def update_produto(
+    merchant_id: UUID,
+    produto_id: UUID,
+    payload: ProdutoUpdate,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    produto = _get_produto(db=db, tenant=tenant, merchant_id=merchant_id, produto_id=produto_id, user=user)
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(produto, key, value)
+    db.add(produto)
+    db.commit()
+    db.refresh(produto)
+    return produto
+
+
+@router.delete("/{merchant_id}/produtos/{produto_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_produto(
+    merchant_id: UUID,
+    produto_id: UUID,
+    tenant: TenantContext = Depends(get_current_active_tenant),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    produto = _get_produto(db=db, tenant=tenant, merchant_id=merchant_id, produto_id=produto_id, user=user)
+    produto.ativo = False
+    db.add(produto)
+    db.commit()
+    return None
 
 
 @router.get("/{merchant_id}/categorias", response_model=CategoriaListResponse)
