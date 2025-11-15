@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.routes import auth, merchants, checkout, agendamentos, tenants, dashboard
+from app.api.v1.routes import auth, merchants, checkout, agendamentos, tenants, dashboard, catalog
 
 app = FastAPI(
     title="Multi Service API",
@@ -25,6 +25,7 @@ app.include_router(merchants.router, prefix="/api/v1/merchants", tags=["Merchant
 app.include_router(checkout.router, prefix="/api/v1/checkout", tags=["Checkout"])
 app.include_router(agendamentos.router, prefix="/api/v1/agendamentos", tags=["Agendamentos"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
+app.include_router(catalog.router, prefix="/api/v1", tags=["Catálogo"])
 
 
 @app.get("/", tags=["Root"])
