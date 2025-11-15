@@ -9,10 +9,15 @@ Os exemplos abaixo assumem que a API está disponível em `http://localhost:8000
 - Todos os exemplos usam `curl`; ajuste conforme necessário para outras ferramentas (HTTPie, Postman, etc.).
 
 ```bash
-BASE_URL="http://localhost:8000/api/v1"
-TENANT_SLUG="lisboa"
-TENANT_ID="00000000-0000-0000-0000-000000000001" # opcional: pode ser o mesmo slug
+export BASE_URL="http://localhost:8000/api/v1"
+export TENANT_SLUG="lisboa"
+export TENANT_ID="00000000-0000-0000-0000-000000000001" # opcional: pode ser o mesmo slug
+export TOKEN_CLIENTE="{{TOKEN}}"
+export MERCHANT_TOKEN="{{MERCHANT_TOKEN}}"
+export PRESTADOR_TOKEN="{{PRESTADOR_TOKEN}}"
 ```
+
+> Sugestão: guarda estes exports num ficheiro `.env` e usa `source .env` antes dos comandos.
 
 ---
 
@@ -210,12 +215,12 @@ Resposta (exemplo):
 ```bash
 # Resumo do merchant autenticado
 curl "$BASE_URL/dashboard/merchant/me/resumo" \
-  -H "Authorization: Bearer {{MERCHANT_TOKEN}}" \
+  -H "Authorization: Bearer ${MERCHANT_TOKEN}" \
   -H "X-Tenant-ID: ${TENANT_ID}"
 
 # Resumo do prestador autenticado
 curl "$BASE_URL/dashboard/prestador/me/resumo" \
-  -H "Authorization: Bearer {{PRESTADOR_TOKEN}}" \
+  -H "Authorization: Bearer ${PRESTADOR_TOKEN}" \
   -H "X-Tenant-ID: ${TENANT_ID}"
 ```
 

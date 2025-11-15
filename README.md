@@ -34,7 +34,13 @@ poetry run uvicorn app.main:app --reload     # arranca API local em http://127.0
 docker-compose up --build                   # levanta Postgres + API em hot reload
 ```
 
-Configure variáveis (.env) para `DATABASE_URL`, `JWT_SECRET_KEY`, etc., conforme `app/core/config.py`.
+Cria um ficheiro `.env` a partir do template:
+
+```bash
+cp .env.example .env
+```
+
+Verifica/aplica os valores (DB, JWT, portas) e **reconstrói o container** após alterações (`docker-compose build api`).
 
 ### Migrations via Docker (comandos tipo `sh -c`)
 ```bash
