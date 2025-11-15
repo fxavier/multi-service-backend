@@ -6,10 +6,16 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.enums import AgendamentoStatus, PedidoStatus, UserRole
+from app.domain.enums import (
+    AgendamentoStatus,
+    PedidoOrigem,
+    PedidoStatus,
+    ServicoTipoAtendimento,
+    UserRole,
+)
 from app.infrastructure.db.base_class import Base
 from app.infrastructure.db.types import GUID
 
@@ -32,6 +38,10 @@ class Tenant(Base, TimestampMixin):
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
     slug: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    moeda_padrao: Mapped[str] = mapped_column(String(10), default="EUR")
+    config_checkout: Mapped[dict] = mapped_column(JSON, default=dict)
+    branding: Mapped[dict] = mapped_column(JSON, default=dict)
 
     merchants: Mapped[List["Merchant"]] = relationship(back_populates="tenant")
     prestadores: Mapped[List["PrestadorServico"]] = relationship(back_populates="tenant")
@@ -73,6 +83,23 @@ class Merchant(Base, TimestampMixin, TenantScopedMixin):
     avaliacao: Mapped[float] = mapped_column(Numeric(3, 2), default=0)
     destaque: Mapped[bool] = mapped_column(Boolean, default=False)
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    banner_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    telefone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    email_contacto: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    endereco_rua: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    endereco_cidade: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    endereco_codigo_postal: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    endereco_pais: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    latitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    horario_funcionamento: Mapped[dict] = mapped_column(JSON, default=dict)
+    pedido_minimo: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    tempo_medio_preparacao_min: Mapped[int] = mapped_column(Integer, default=0)
+    aceita_produtos: Mapped[bool] = mapped_column(Boolean, default=True)
+    aceita_servicos: Mapped[bool] = mapped_column(Boolean, default=True)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="merchants")
     categorias: Mapped[List["Categoria"]] = relationship(back_populates="merchant")
@@ -89,8 +116,14 @@ class Categoria(Base, TimestampMixin, TenantScopedMixin):
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
     merchant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("merchants.id", ondelete="CASCADE"), nullable=False)
+    slug: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
 
     merchant: Mapped[Merchant] = relationship(back_populates="categorias")
+    produtos: Mapped[List["Produto"]] = relationship(back_populates="categoria")
+    servicos: Mapped[List["Servico"]] = relationship(back_populates="categoria")
 
 
 class Produto(Base, TimestampMixin, TenantScopedMixin):
@@ -104,8 +137,22 @@ class Produto(Base, TimestampMixin, TenantScopedMixin):
     preco: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     merchant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("merchants.id", ondelete="CASCADE"), nullable=False)
     disponivel: Mapped[bool] = mapped_column(Boolean, default=True)
+    descricao_curta: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    descricao_detalhada: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    stock_atual: Mapped[int] = mapped_column(Integer, default=0)
+    stock_minimo: Mapped[int] = mapped_column(Integer, default=0)
+    categoria_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("categorias.id", ondelete="SET NULL"), nullable=True
+    )
+    imagens: Mapped[List[str]] = mapped_column(JSON, default=list)
+    atributos_extras: Mapped[dict] = mapped_column(JSON, default=dict)
+    permitir_backorder: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_por_pedido: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     merchant: Mapped[Merchant] = relationship(back_populates="produtos")
+    categoria: Mapped[Optional["Categoria"]] = relationship(back_populates="produtos")
 
 
 class PrestadorServico(Base, TimestampMixin, TenantScopedMixin):
@@ -118,6 +165,15 @@ class PrestadorServico(Base, TimestampMixin, TenantScopedMixin):
     profissoes: Mapped[List[str]] = mapped_column(JSON, default=list)
     preco_base: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    avaliacao_media: Mapped[float] = mapped_column(Numeric(3, 2), default=0)
+    total_avaliacoes: Mapped[int] = mapped_column(Integer, default=0)
+    zona_atendimento: Mapped[dict] = mapped_column(JSON, default=dict)
+    atende_ao_domicilio: Mapped[bool] = mapped_column(Boolean, default=False)
+    atende_online: Mapped[bool] = mapped_column(Boolean, default=False)
+    linguas: Mapped[List[str]] = mapped_column(JSON, default=list)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="prestadores")
     servicos: Mapped[List["Servico"]] = relationship(back_populates="prestador")
@@ -133,8 +189,22 @@ class Servico(Base, TimestampMixin, TenantScopedMixin):
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
     preco: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     prestador_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("prestadores.id", ondelete="CASCADE"), nullable=False)
+    descricao_curta: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    descricao_detalhada: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duracao_minutos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    categoria_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("categorias.id", ondelete="SET NULL"), nullable=True
+    )
+    imagens: Mapped[List[str]] = mapped_column(JSON, default=list)
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+    politica_cancelamento: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tipo_atendimento: Mapped[ServicoTipoAtendimento] = mapped_column(
+        Enum(ServicoTipoAtendimento), default=ServicoTipoAtendimento.PRESENCIAL
+    )
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     prestador: Mapped[PrestadorServico] = relationship(back_populates="servicos")
+    categoria: Mapped[Optional["Categoria"]] = relationship(back_populates="servicos")
 
 
 class Cliente(Base, TimestampMixin, TenantScopedMixin):
@@ -147,6 +217,8 @@ class Cliente(Base, TimestampMixin, TenantScopedMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     telefone: Mapped[str] = mapped_column(String(50), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    default_address_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID(), nullable=True)
+    metadata_extra: Mapped[dict] = mapped_column(JSON, default=dict)
 
     user: Mapped[User] = relationship(back_populates="cliente")
     pedidos: Mapped[List["Pedido"]] = relationship(back_populates="cliente")
@@ -180,6 +252,17 @@ class Pedido(Base, TimestampMixin, TenantScopedMixin):
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     status: Mapped[PedidoStatus] = mapped_column(Enum(PedidoStatus), default=PedidoStatus.CRIADO)
+    codigo_externo: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    origem: Mapped[PedidoOrigem] = mapped_column(Enum(PedidoOrigem), default=PedidoOrigem.WEB)
+    metodo_pagamento: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    estado_pagamento: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    endereco_entrega_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    cliente_nome_snapshot: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    cliente_email_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cliente_telefone_snapshot: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    data_confirmacao: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_envio: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_conclusao: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     cliente: Mapped[Cliente] = relationship(back_populates="pedidos")
     itens: Mapped[List["ItemPedido"]] = relationship(back_populates="pedido", cascade="all, delete-orphan")
@@ -196,6 +279,15 @@ class ItemPedido(Base, TimestampMixin, TenantScopedMixin):
     ref_id: Mapped[uuid.UUID] = mapped_column(GUID(), nullable=False)
     quantidade: Mapped[int] = mapped_column(Integer, default=1)
     preco_unitario: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    nome_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    merchant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("merchants.id", ondelete="SET NULL"), nullable=True
+    )
+    prestador_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("prestadores.id", ondelete="SET NULL"), nullable=True
+    )
+    categoria_id_snapshot: Mapped[Optional[uuid.UUID]] = mapped_column(GUID(), nullable=True)
+    total_linha: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
 
     pedido: Mapped[Pedido] = relationship(back_populates="itens")
 
@@ -213,6 +305,13 @@ class Agendamento(Base, TimestampMixin, TenantScopedMixin):
     data_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[AgendamentoStatus] = mapped_column(Enum(AgendamentoStatus), default=AgendamentoStatus.PENDENTE)
     metadados_formulario: Mapped[dict] = mapped_column(JSON, default=dict)
+    preco_confirmado: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    endereco_atendimento: Mapped[dict] = mapped_column(JSON, default=dict)
+    canal: Mapped[PedidoOrigem] = mapped_column(Enum(PedidoOrigem), default=PedidoOrigem.WEB)
+    notas_internas: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    data_confirmacao: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_cancelamento: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    motivo_cancelamento: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     cliente: Mapped[Cliente] = relationship(back_populates="agendamentos")
     prestador: Mapped[PrestadorServico] = relationship()

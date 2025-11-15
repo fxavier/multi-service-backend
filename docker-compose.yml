@@ -1,32 +1,33 @@
-version: "3.9"
 services:
   db:
     image: postgres:16
     container_name: msb_db
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: msb
-      POSTGRES_PASSWORD: msb
-      POSTGRES_DB: msb
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+
   api:
     build: .
     container_name: msb_api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT}
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://msb:msb@db:5432/msb
-      JWT_SECRET_KEY: supersecret
-      JWT_ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
       PYTHONPATH: /app
     volumes:
       - ./:/app
     ports:
-      - "8000:8000"
+      - "${API_PORT}:${API_PORT}"
     depends_on:
       - db
+
 volumes:
   pg_data:
