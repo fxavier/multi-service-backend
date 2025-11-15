@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from uuid import UUID
 from datetime import datetime
+from typing import Generic, TypeVar
+from uuid import UUID
 
 from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
+
+T = TypeVar("T")
 
 
 class TenantAware(BaseModel):
@@ -21,8 +25,11 @@ class Timestamped(BaseModel):
     updated_at: datetime | None = None
 
 
-class PaginatedResponse(BaseModel):
+class PaginatedResponse(GenericModel, Generic[T]):
     """Resposta genérica paginada."""
 
     total: int
-    items: list
+    items: list[T]
+    page: int | None = None
+    page_size: int | None = None
+    total_pages: int | None = None
